@@ -1,0 +1,13 @@
+{
+    "type"       : "javascript",
+    "id"         : "rtve",
+    "file"       : "rtve.js",
+    "category"   : "video",
+    "version"    : "0.1",
+    "author"     : "Carlos Jurado",
+    "title"      : "rtve.es",
+    "icon"       : "http://img.irtve.es/css/rtve.commons/rtve.header.footer/i/logoRTVEes.png",
+    "synopsis"   : "RTVE public spanish TV",
+    "description": "RTVE public spanish TV",
+    "homepage"   : "https://github.com/zares85/showtime-rtve"
+}
