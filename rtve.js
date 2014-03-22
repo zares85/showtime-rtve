@@ -107,8 +107,8 @@
         {id: 'radio-5',         title: 'Radio 5'},
         {id: 'radio-exterior',  title: 'Radio Exterior'}
     ];
-    const REGEXP_PROGRAM = /"col_tit".*?id *= *"([0-9]*)".*?href *= *"(.*?)".*?>(.*?)<\/a.*"col_fec".*?>(.*?)<.*"detalle".*?>(.*?)</;
-    const REGEXP_VIDEO = /"col_tit".*?id *= *"([0-9]*)".*?href *= *"(.*?)".*?>(.*?)<\/a.*"col_dur".*?>(.*?)<.*"col_fec".*?>(.*?)<.*"detalle".*?>(.*?)</;
+    const REGEX_PROGRAM = /"col_tit".*?id *= *"([0-9]*)".*?href *= *"(.*?)".*?>(.*?)<\/a.*"col_fec".*?>(.*?)<.*"detalle".*?>(.*?)</;
+    const REGEX_VIDEO = /"col_tit".*?id *= *"([0-9]*)".*?href *= *"(.*?)".*?>(.*?)<\/a.*"col_dur".*?>(.*?)<.*"col_fec".*?>(.*?)<.*"detalle".*?>(.*?)</;
 
     // Create the showtime service and link to the statPage
     plugin.createService(TITLE, PREFIX + ':start', 'video', true, RTVE_LOGO);
@@ -181,7 +181,6 @@
         var subcategories = SUBCATEGORIES[category.id]
         for (var i = 0; i < subcategories.length; i++) {
             var subcategory = subcategories[i];
-            subcategory.page = 1;
             page.appendItem(categoryURI(subcategory), 'directory', {title: subcategory.title});
         }
 
@@ -200,17 +199,21 @@
      */
     function categoryPage(page, category) {
         category = showtime.JSONDecode(category);
-        var html = getCategoryHTML(category);
-        var programs = parsePrograms(html);
 
-        (category.page <= 1) || displayPrevious(page, category, categoryURI);
-        displayPrograms(page, programs);
-        displayNext(page, category, categoryURI);
+        var pag = 1;
+        function paginator() {
+            var html = getCategoryHTML(category, pag++);
+            var programs = parsePrograms(html);
+            displayPrograms(page, programs);
+            return programs.length != 0;
+        }
 
+        paginator();
+        page.paginator = paginator;
         page.type = 'directory';
         page.contents = 'items';
         page.metadata.logo = RTVE_LOGO;
-        page.metadata.title = category.title + ' (' + category.page + ')';
+        page.metadata.title = category.title;
         page.loading = false;
     }
 
@@ -248,16 +251,20 @@
      */
     function programPage(page, program) {
         program = showtime.JSONDecode(program);
-        var html = getProgramHTML(program);
-        var videos = parseVideos(html);
 
-        (program.page <= 1) || displayPrevious(page, program, programURI);
-        displayVideos(page, videos);
-        displayNext(page, program, programURI);
+        var pag = 1;
+        function paginator() {
+            var html = getProgramHTML(program, pag++);
+            var videos = parseVideos(html);
+            displayVideos(page, videos);
+            return videos.length != 0;
+        }
 
+        paginator();
+        page.paginator = paginator;
         page.type = 'directory';
         page.contents = 'contents';
-        page.metadata.title = program.title + ' (' + program.page + ')';
+        page.metadata.title = program.title;
         page.loading = false;
     }
 
@@ -290,16 +297,17 @@
      * Returns the HTML page from a category
      *
      * @param   {object} category
+     * @param   {integer} pag
      * @returns {string} HTML page
      */
-    function getCategoryHTML(category) {
+    function getCategoryHTML(category, pag) {
         var args = {
             order: 1,
             criteria: 'asc',
             pageSize: 50, // not working
             emissionFilter: 'all' // 'emi' TODO showtime option
         };
-        var url = RTVE_BASEURL + '/alacarta/programas/todos/' + category.id + '/' + category.page + '/';
+        var url = RTVE_BASEURL + '/alacarta/programas/todos/' + category.id + '/' + pag + '/';
         showtime.print(url);
         return showtime.httpReq(url, {args: args}).toString();
     }
@@ -308,16 +316,17 @@
      * Returns the HTML page from a program
      *
      * @param   {object} program
+     * @param   {integer} pag
      * @returns {string} HTML page
      */
-    function getProgramHTML(program) {
+    function getProgramHTML(program, pag) {
         var args = {
             ctx: program.id,
             pageSize: 50,
             typeFilter: 39816, // full programs
             order: 3, // 3 -> date
             orderCriteria: 'DESC',
-            pbq: program.page // page number
+            pbq: pag // page number
         };
         return showtime.httpReq(PROGRAM_BASEURL, {args: args}).toString();
     }
@@ -367,7 +376,7 @@
         for (var i = 0; i < split.length; i++) {
             var item = split[i];
             var program = {};
-            var match = item.match(REGEXP_PROGRAM);
+            var match = item.match(REGEX_PROGRAM);
             if (match) {
                 // Add the mathed program to the list
                 program.id = match[1];
@@ -375,7 +384,6 @@
                 program.title = match[3];
                 program.date = match[4];
                 program.description = match[5];
-                program.page = 1; // workaround to save the page number
                 programs.push(program);
             }
         }
@@ -401,7 +409,7 @@
         for (var i = 0; i < split.length; i++) {
             var item = split[i];
             var video = {};
-            var match = item.match(REGEXP_VIDEO);
+            var match = item.match(REGEX_VIDEO);
             if (match) {
                 // Add the mathed program to the list
                 video.id = match[1];
@@ -419,18 +427,6 @@
     // ==========================================================================
     // VIEWS
     // ==========================================================================
-
-    function displayPrevious(page, item, callbackURI) {
-        item.page--;
-        page.appendItem(callbackURI(item), 'directory', {title: 'Página anterior'});
-        item.page++;
-    }
-
-    function displayNext(page, item, callbackURI) {
-        item.page++;
-        page.appendItem(callbackURI(item), 'directory', {title: 'Página siguiente'});
-        item.page--;
-    }
 
     /**
      * Display the program list
@@ -526,3 +522,6 @@
     }
 
 })(this);
+
+// http://img.irtve.es/i/?w=&i=1378896964842.jpg
+// http://img.irtve.es/imagenes/cuentame-como-paso/1389887626950.jpg
