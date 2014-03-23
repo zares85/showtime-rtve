@@ -19,11 +19,10 @@
 (function (plugin) {
     const PREFIX = 'rtve';
     const TITLE = 'rtve';
-    const RTVE_BASEURL = 'http://www.rtve.es';
+    const BASEURL = 'http://www.rtve.es';
     const PROGRAM_BASEURL = 'http://www.rtve.es/alacarta/interno/contenttable.shtml';
     const VIDEOS_BASEURL = 'http://mvod.lvlt.rtve.es';
-    const MADVIEO_BASEURL = 'http://studio.themadvideo.com/api/videos/';
-    const DESCARGAVIDEOS_BASEURL = 'http://www.descargavideos.tv';
+    const PYDOWNTV_BASEURL = 'http://www.pydowntv.com/api';
     const VIDEOINFO_BASEURL = 'http://www.rtve.es/drmn/embed/video/';
     const RTVE_LOGO = 'http://img.irtve.es/css/rtve.commons/rtve.header.footer/i/logoRTVEes.png';
     const CATEGORIES = [
@@ -277,15 +276,9 @@
      */
     function episodePage(page, episode) {
         episode = showtime.JSONDecode(episode);
-        var file = getEpisodeFile(episode);
-        var ext = file.split(':').pop();
-        showtime.print('Playing: ' + file);
-        var videoParams = {
-            title: episode.title,
-            sources: [{url: file}]
-        };
-        page.type = (ext === 'mp3') ? 'music' : 'video';
-        page.source = file;//'episodeparams:' + showtime.JSONEncode(episodeParams);
+        var video = getVideoParams(episode);
+        page.type = 'video'; // TODO music sources
+        page.source = 'videoparams:' + showtime.JSONEncode(video);
         page.loading = false;
     }
 
@@ -307,7 +300,7 @@
             pageSize: 50, // not working
             emissionFilter: 'all' // 'emi' TODO showtime option
         };
-        var url = RTVE_BASEURL + '/alacarta/programas/todos/' + category.id + '/' + pag + '/';
+        var url = BASEURL + '/alacarta/programas/todos/' + category.id + '/' + pag + '/';
         showtime.print(url);
         return showtime.httpReq(url, {args: args}).toString();
     }
@@ -316,7 +309,7 @@
      * Returns the HTML page from a program
      *
      * @param   {object} program
-     * @param   {integer} pag
+     * @param   {int} pag
      * @returns {string} HTML page
      */
     function getProgramHTML(program, pag) {
@@ -331,26 +324,31 @@
         return showtime.httpReq(PROGRAM_BASEURL, {args: args}).toString();
     }
 
-    function getEpisodeFile(episode) {
-        var url = RTVE_BASEURL + episode.url;
-        var html = showtime.httpReq(url).toString();
-        // Try with madvideo
-        var match = html.match('<iframe id="visor(.*)" width');
-        if (match) {
-            url = MADVIEO_BASEURL + match[1] + '/player_data';
-            html = showtime.httpReq(url).toString();
-            var init = html.indexOf('<src>' + VIDEOS_BASEURL) + 5;
-            var end = html.indexOf('</src>', init);
-            var episode_uri = html.slice(init, end);
-            return episode_uri;
+    /**
+     * Returns a showtime videoparams object from a episode
+     * Uses the PyDownTV API http://www.pydowntv.com/api to obtain the info
+     *
+     * @param episode
+     * @returns {object}
+     */
+    function getVideoParams(episode) {
+        var args = {url: episode.url};
+        showtime.trace('Loading: ' + url + '?url=' + episode.url, PREFIX);
+        var json = showtime.httpReq(PYDOWNTV_BASEURL, {args: args}).toString();
+        json = showtime.JSONDecode(json);
+        if (!json.exito) {
+            return null; // fail
         }
-        // Try with descargavideos
-        var args = {modo: 1, web: url};
-        html = showtime.httpReq(DESCARGAVIDEOS_BASEURL, {args: args}).toString();
-        var ini = html.indexOf(VIDEOS_BASEURL);
-        var end = html.indexOf("'", ini);
-        html = html.slice(ini, end);
-        return html;
+        var sources = [];
+        for (var i = 0; i < json.videos[0].url_video.length; i++) {
+            sources.push({url: json.videos[0].url_video[i]});
+        }
+        return {
+            sources     : sources,
+            title       : json.titulos[0],
+            no_fs_scan  : true,
+            canonicalUrl: episodeURI(episode)
+        };
     }
 
     // ==========================================================================
@@ -413,7 +411,7 @@
             if (match) {
                 // Add the mathed program to the list
                 episode.id = match[1];
-                episode.url = match[2];
+                episode.url = fullURL(match[2]);
                 episode.title = match[3];
                 episode.duration = match[4];
                 episode.date = match[5];
@@ -422,6 +420,17 @@
             }
         }
         return episodes;
+    }
+
+    /**
+     * Returns the full path of URLs
+     * Add the BASEURL to relatives paths
+     *
+     * @param {string} url
+     * @returns {string} url full path
+     */
+    function fullURL(url) {
+        return url.indexOf(BASEURL) == -1 ? BASEURL + url : url;
     }
 
     // ==========================================================================
