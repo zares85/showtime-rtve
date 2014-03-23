@@ -108,7 +108,7 @@
         {id: 'radio-exterior',  title: 'Radio Exterior'}
     ];
     const REGEX_PROGRAM = /"col_tit".*?id *= *"([0-9]*)".*?href *= *"(.*?)".*?>(.*?)<\/a.*"col_fec".*?>(.*?)<.*"detalle".*?>(.*?)</;
-    const REGEX_VIDEO = /"col_tit".*?id *= *"([0-9]*)".*?href *= *"(.*?)".*?>(.*?)<\/a.*"col_dur".*?>(.*?)<.*"col_fec".*?>(.*?)<.*"detalle".*?>(.*?)</;
+    const REGEX_EPISODE = /"col_tit".*?id *= *"([0-9]*)".*?href *= *"(.*?)".*?>(.*?)<\/a.*"col_dur".*?>(.*?)<.*"col_fec".*?>(.*?)<.*"detalle".*?>(.*?)</;
 
     // Create the showtime service and link to the statPage
     plugin.createService(TITLE, PREFIX + ':start', 'video', true, RTVE_LOGO);
@@ -120,7 +120,7 @@
     plugin.addURI(PREFIX + ':supercat:(.*)', superCategoryPage); //category object
     plugin.addURI(PREFIX + ':category:(.*)', categoryPage); //category object
     plugin.addURI(PREFIX + ':program:(.*)', programPage); // program object
-    plugin.addURI(PREFIX + ':video:(.*)', videoPage); // video object
+    plugin.addURI(PREFIX + ':episode:(.*)', episodePage); // episode object
 
     // URI functions
     function superCategoryURI(category) {
@@ -138,8 +138,8 @@
     function programURI(program) {
         return PREFIX + ':program:' + showtime.JSONEncode(program);
     }
-    function videoURI(video) {
-        return PREFIX + ':video:' + showtime.JSONEncode(video);
+    function episodeURI(episode) {
+        return PREFIX + ':episode:' + showtime.JSONEncode(episode);
     }
 
     // ==========================================================================
@@ -255,9 +255,9 @@
         var pag = 1;
         function paginator() {
             var html = getProgramHTML(program, pag++);
-            var videos = parseVideos(html);
-            displayVideos(page, videos);
-            return videos.length != 0;
+            var episodes = parseEpisodes(html);
+            displayEpisodes(page, episodes);
+            return episodes.length != 0;
         }
 
         paginator();
@@ -269,23 +269,23 @@
     }
 
     /**
-     * Define a video page
-     * Gets and plays the video
+     * Define a episode page
+     * Gets and plays the episode
      *
      * @param page
-     * @param video
+     * @param episode
      */
-    function videoPage(page, video) {
-        video = showtime.JSONDecode(video);
-        var file = getVideoFile(video);
+    function episodePage(page, episode) {
+        episode = showtime.JSONDecode(episode);
+        var file = getEpisodeFile(episode);
         var ext = file.split(':').pop();
         showtime.print('Playing: ' + file);
         var videoParams = {
-            title: video.title,
+            title: episode.title,
             sources: [{url: file}]
         };
         page.type = (ext === 'mp3') ? 'music' : 'video';
-        page.source = file;//'videoparams:' + showtime.JSONEncode(videoParams);
+        page.source = file;//'episodeparams:' + showtime.JSONEncode(episodeParams);
         page.loading = false;
     }
 
@@ -331,8 +331,8 @@
         return showtime.httpReq(PROGRAM_BASEURL, {args: args}).toString();
     }
 
-    function getVideoFile(video) {
-        var url = RTVE_BASEURL + video.url;
+    function getEpisodeFile(episode) {
+        var url = RTVE_BASEURL + episode.url;
         var html = showtime.httpReq(url).toString();
         // Try with madvideo
         var match = html.match('<iframe id="visor(.*)" width');
@@ -341,8 +341,8 @@
             html = showtime.httpReq(url).toString();
             var init = html.indexOf('<src>' + VIDEOS_BASEURL) + 5;
             var end = html.indexOf('</src>', init);
-            var video_uri = html.slice(init, end);
-            return video_uri;
+            var episode_uri = html.slice(init, end);
+            return episode_uri;
         }
         // Try with descargavideos
         var args = {modo: 1, web: url};
@@ -391,37 +391,37 @@
     }
 
     /**
-     * Parses the program html page and returns the list of videos
+     * Parses the program html page and returns the list of episodes
      *
      * @param   {string} html
-     * @returns {Array} videos
+     * @returns {Array} episodes
      */
-    function parseVideos(html) {
-        var init = html.indexOf('<div class="ContentTabla">'); // Begins videos table
+    function parseEpisodes(html) {
+        var init = html.indexOf('<div class="ContentTabla">'); // Begins episodes table
         init = html.indexOf('<li class="odd">', init); // First program
-        var end = html.indexOf('<div class="FooterTabla">', init); // Ends videos table
+        var end = html.indexOf('<div class="FooterTabla">', init); // Ends episodes table
         html = html.slice(init, end);
         html = html.replace(/[\n\r]/g, ' '); // Remove break lines
 
-        // Split and parse videos
-        var videos = [];
+        // Split and parse episodes
+        var episodes = [];
         var split = html.split(/<li class="odd">|<li class="even">/);
         for (var i = 0; i < split.length; i++) {
             var item = split[i];
-            var video = {};
-            var match = item.match(REGEX_VIDEO);
+            var episode = {};
+            var match = item.match(REGEX_EPISODE);
             if (match) {
                 // Add the mathed program to the list
-                video.id = match[1];
-                video.url = match[2];
-                video.title = match[3];
-                video.duration = match[4];
-                video.date = match[5];
-                video.description = match[6];
-                videos.push(video);
+                episode.id = match[1];
+                episode.url = match[2];
+                episode.title = match[3];
+                episode.duration = match[4];
+                episode.date = match[5];
+                episode.description = match[6];
+                episodes.push(episode);
             }
         }
-        return videos;
+        return episodes;
     }
 
     // ==========================================================================
@@ -443,15 +443,15 @@
     }
 
     /**
-     * Display the video list
+     * Display the episode list
      *
      * @param page
-     * @param {Array} videos
+     * @param {Array} episodes
      */
-    function displayVideos(page, videos) {
-        for (var i = 0; i < videos.length; i++) {
-            var video = videos[i];
-            page.appendItem(videoURI(video), 'video', getVideoMetadata(video));
+    function displayEpisodes(page, episodes) {
+        for (var i = 0; i < episodes.length; i++) {
+            var episode = episodes[i];
+            page.appendItem(episodeURI(episode), 'video', getEpisodeMetadata(episode));
         }
     }
 
@@ -479,24 +479,24 @@
     }
 
     /**
-     * Returns a metadata object for a given video
+     * Returns a metadata object for a given episode
      *
-     * @param   {object} video
+     * @param   {object} episode
      * @returns {object} showtime item metadata
      */
-    function getVideoMetadata(video) {
-        var title = video.title;
+    function getEpisodeMetadata(episode) {
+        var title = episode.title;
         title = title.replace('<em>', '<font color="#daa520">');
         title = title.replace('</em>', '</font>');
 
         var desc = '<font size="4">' + 'Fecha: ' + '</font>';
-        desc += '<font size="4" color="#daa520">' + video.date + '</font>\n';
-        desc += video.description;
+        desc += '<font size="4" color="#daa520">' + episode.date + '</font>\n';
+        desc += episode.description;
 
         return {
             title: new showtime.RichText(title),
             description: new showtime.RichText(desc),
-            duration: dur2sec(video.duration)
+            duration: dur2sec(episode.duration)
         };
 
     }
