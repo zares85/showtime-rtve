@@ -24,7 +24,7 @@
     const VIDEOS_BASEURL = 'http://mvod.lvlt.rtve.es';
     const PYDOWNTV_BASEURL = 'http://www.pydowntv.com/api';
     const VIDEOINFO_BASEURL = 'http://www.rtve.es/drmn/embed/video/';
-    const RTVE_LOGO = 'http://img.irtve.es/css/rtve.commons/rtve.header.footer/i/logoRTVEes.png';
+    const LOGO = 'http://img.irtve.es/css/rtve.commons/rtve.header.footer/i/logoRTVEes.png';
     const CATEGORIES = [
         {id: 'todos',               title: 'Todos los programas'},
         {id: 'archivo',             title: 'Archivo'},
@@ -108,9 +108,13 @@
     ];
     const REGEX_PROGRAM = /"col_tit".*?id *= *"([0-9]*)".*?href *= *"(.*?)".*?>(.*?)<\/a.*"col_fec".*?>(.*?)<.*"detalle".*?>(.*?)</;
     const REGEX_EPISODE = /"col_tit".*?id *= *"([0-9]*)".*?href *= *"(.*?)".*?>(.*?)<\/a.*"col_dur".*?>(.*?)<.*"col_fec".*?>(.*?)<.*"detalle".*?>(.*?)</;
+    const REGEX_RESULT = /.*name.*?href.*?> *(?:<!--.*?-->)*(.*?)<.*thum.*.*href="(.*?)".*?image.*src="(.*?)".*date.*?>(.*?)<.*?texto.*?> *(?:<!--.*?-->)(.*?)</; // url, image, date, desc
 
     // Create the showtime service and link to the statPage
-    plugin.createService(TITLE, PREFIX + ':start', 'video', true, RTVE_LOGO);
+    plugin.createService(TITLE, PREFIX + ':start', 'video', true, LOGO);
+
+    // Create the searcher
+    plugin.addSearcher(TITLE, LOGO, searchPage);
 
     // Map URIs and functions
     plugin.addURI(PREFIX + ':start', startPage);
@@ -161,7 +165,7 @@
 
         page.type = 'directory';
         page.contents = 'items';
-        page.metadata.logo = RTVE_LOGO;
+        page.metadata.logo = LOGO;
         page.metadata.title = TITLE;
         page.loading = false;
     }
@@ -185,7 +189,7 @@
 
         page.type = 'directory';
         page.contents = 'items';
-        page.metadata.logo = RTVE_LOGO;
+        page.metadata.logo = LOGO;
         page.metadata.title = category.title;
         page.loading = false;
     }
@@ -211,7 +215,7 @@
         page.paginator = paginator;
         page.type = 'directory';
         page.contents = 'items';
-        page.metadata.logo = RTVE_LOGO;
+        page.metadata.logo = LOGO;
         page.metadata.title = category.title;
         page.loading = false;
     }
@@ -282,6 +286,30 @@
         page.loading = false;
     }
 
+    /**
+     * Define a search page
+     *
+     * @param page
+     * @param {string} query
+     */
+    function searchPage(page, query) {
+        var pag = 0;
+        page.entries = 0;
+        function paginator() {
+            var html = getSearchHTML(query, pag++);
+            var results = parseResults(html);
+            displayEpisodes(page, results);
+            page.entries += results.length;
+            return results.length != 0;
+        }
+
+        paginator();
+        page.type = 'directory';
+        page.contents = 'ĺist';
+        page.paginator = paginator;
+        page.loading = false;
+    }
+
     // ==========================================================================
     // MODELS
     // ==========================================================================
@@ -301,7 +329,7 @@
             emissionFilter: 'all' // 'emi' TODO showtime option
         };
         var url = BASEURL + '/alacarta/programas/todos/' + category.id + '/' + pag + '/';
-        showtime.print(url);
+        showtime.trace(url);
         return showtime.httpReq(url, {args: args}).toString();
     }
 
@@ -322,6 +350,19 @@
             pbq: pag // page number
         };
         return showtime.httpReq(PROGRAM_BASEURL, {args: args}).toString();
+    }
+
+    /**
+     * Returns the HTML page of the query results
+     *
+     * @param {string} query
+     * @returns {string} HTML page
+     */
+    function getSearchHTML(query, pag) {
+        var args = {q: query, start: pag * 10};
+        var url = BASEURL + '/buscador/GoogleServlet';
+        showtime.trace('Loading: ' + url + '?q=' + query + '&start=' + (pag * 10), PREFIX);
+        return showtime.httpReq(url, {args: args}).toString();
     }
 
     /**
@@ -423,6 +464,39 @@
     }
 
     /**
+     * Parses the search html page and return the list of results
+     *
+     * @param html
+     * @returns {Array}
+     */
+    function parseResults(html) {
+        var init = html.indexOf('<div class="sresult">'); // Begins results list
+        var end = html.indexOf('<div class="col a40">');
+        html = html.slice(init, end);
+        html = html.replace(/[\n\r]/g, ' '); // Remove break lines
+
+        // Split and parse results
+        var results = [];
+        var split = html.split(/<div class="sresult">/);
+        for (var i = 0; i < split.length; i++) {
+            var item = split[i];
+            var result = {};
+            var match = item.match(REGEX_RESULT);
+            if (match) {
+                // Add the matched result to the list
+                result.title = match[1];
+                result.url = fullURL(match[2]);
+                result.icon = match[3];
+                result.date = match[4];
+                result.description = match[5];
+                result.duration = null;
+                results.push(result);
+            }
+        }
+        return results;
+    }
+
+    /**
      * Returns the full path of URLs
      * Add the BASEURL to relatives paths
      *
@@ -502,12 +576,20 @@
         desc += '<font size="4" color="#daa520">' + episode.date + '</font>\n';
         desc += episode.description;
 
-        return {
+        var metadata = {
             title: new showtime.RichText(title),
-            description: new showtime.RichText(desc),
-            duration: dur2sec(episode.duration)
+            description: new showtime.RichText(desc)
         };
 
+        if (episode.duration) {
+            metadata.duration = dur2sec(episode.duration);
+        }
+
+        if (episode.icon) {
+            metadata.icon = episode.icon;
+        }
+
+        return metadata;
     }
 
     /**
